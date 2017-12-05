@@ -90,34 +90,35 @@ int main()
 		exit(1);
 	}
 
+	// Declare variables
 	std::vector<std::vector<int>> _map = map.mMap;
 	int _width = map.getWidth();
 	int _height = map.getHeight();
-	cl::vector<int> _1Dmap(_height*_width);
+	std::vector<int> _1Dmap(_height * _width);
 
 	// Convert 2D map into 1D map
 	for (int i = 0; i < _height; i++)
 	{
 		for (int j = 0; j < _width; j++)
 		{
-			_1Dmap[i * _height + j] = _map[i][j];
+			_1Dmap[i * _width + j] = _map[i][j];
 		}
 	}
 
-	cl::vector<int> _output(_height);
+	cl::vector<int> _output(_width);
 	std::cout << "map size: " << sizeof(_map) << "\n1d size: " << sizeof(_1Dmap) << " -- " << _1Dmap.size() << "\nint size: " << sizeof(int) << "\n";
 
 	// Buffers
-	cl::Buffer buffer_map(context,    CL_MEM_READ_ONLY, sizeof(int) * _1Dmap.size());
-	cl::Buffer buffer_width(context,  CL_MEM_READ_ONLY, sizeof(int));
-	cl::Buffer buffer_height(context, CL_MEM_READ_ONLY, sizeof(int));
+	cl::Buffer buffer_map(context,    CL_MEM_READ_ONLY , sizeof(int) * _1Dmap.size());
+	cl::Buffer buffer_width(context,  CL_MEM_READ_ONLY , sizeof(int));
+	cl::Buffer buffer_height(context, CL_MEM_READ_ONLY , sizeof(int));
 	cl::Buffer buffer_output(context, CL_MEM_WRITE_ONLY, sizeof(int) * _output.size());
 
 	// Write input buffers to device
 	cl::CommandQueue queue(context, default_device);
-	status = queue.enqueueWriteBuffer(buffer_map,    CL_TRUE, 0, sizeof(int) * _1Dmap.size(), &_1Dmap); // Input
+	status = queue.enqueueWriteBuffer(buffer_map,    CL_TRUE, 0, sizeof(int) * _1Dmap.size(), _1Dmap.data()); // Input
 	status = queue.enqueueWriteBuffer(buffer_width,  CL_TRUE, 0, sizeof(int),                 &_width); // Width
-	status = queue.enqueueWriteBuffer(buffer_height, CL_TRUE, 0, sizeof(int),                 &_height); // Height
+	status = queue.enqueueWriteBuffer(buffer_height, CL_TRUE, 0, sizeof(int),                 &_height); // Heigh
 
 	// Set arguments
 	cl::Kernel find_path(program, "find_path");
@@ -127,12 +128,12 @@ int main()
 	find_path.setArg(3, buffer_output);
 
 	// Set work items and execute
-	status = queue.enqueueNDRangeKernel(find_path, 0, cl::NDRange(_height));
+	status = queue.enqueueNDRangeKernel(find_path, 0, cl::NDRange(_output.size()));
 	status = queue.finish();
 	std::cout << "Status finish: " << status << "\n";
 
 	// Read output buffer from device
-	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int), &_output, NULL, NULL); // Output
+	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int) * _output.size(), _output.data(), NULL, NULL); // Output
 
 	std::cout << "Status read: " << status << "\n";
 	for (int i = 0; i < _height; i++)
