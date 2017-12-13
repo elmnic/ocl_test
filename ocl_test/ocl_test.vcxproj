@@ -19,6 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="Agents.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Map.cpp" />
   </ItemGroup>
@@ -26,6 +27,7 @@
     <None Include="kernel.cl" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Agents.h" />
     <ClInclude Include="Map.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">

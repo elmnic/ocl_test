@@ -34,6 +34,24 @@ int convertToString(const char *filename, std::string& s)
 	return -1;
 }
 
+std::vector<int> to1D(std::vector<std::vector<int>> vector)
+{
+	int rows = vector.size();
+	int cols = vector[0].size();
+
+	std::vector<int> _1Dmap(rows * cols);
+
+	// Convert 2D map into 1D map
+	for (int i = 0; i < rows; i++)
+	{
+		for (int j = 0; j < cols; j++)
+		{
+			_1Dmap[i * cols + j] = vector[i][j];
+		}
+	}
+	return _1Dmap;
+}
+
 int main()
 {
 	Map map;
@@ -48,15 +66,16 @@ int main()
 		exit(1);
 	}
 
-	// Default platform
+	// Use first platform as default
 	cl::Platform default_platform = all_platforms[0];
 	std::cout << "Using platform: " << default_platform.getInfo<CL_PLATFORM_NAME>() << "\n";
 	std::cout << "Vendor: " << default_platform.getInfo<CL_PLATFORM_VENDOR>() << "\n";
 	std::cout << "Version: " << default_platform.getInfo<CL_PLATFORM_VERSION>() << "\n";
-
+	
 	// Get devices 
 	std::vector<cl::Device> all_devices;
 	default_platform.getDevices(CL_DEVICE_TYPE_ALL, &all_devices);
+	
 
 	if (all_devices.size() == 0)
 	{
@@ -64,11 +83,17 @@ int main()
 		exit(1);
 	}
 
-	// Default devices
+	// Use first device as default
 	cl::Device default_device = all_devices[0];
 	std::cout << "Using device: " << default_device.getInfo<CL_DEVICE_NAME>() << "\n";
+	/*std::cout << "Global mem: " << default_device.getInfo<CL_DEVICE_GLOBAL_MEM_CACHE_SIZE>() << "\n";
+	std::cout << "Local mem: " << default_device.getInfo<CL_DEVICE_LOCAL_MEM_SIZE>() << "\n";
+	std::cout << "Max comp units: " << default_device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>() << "\n";
+	std::cout << "Max work group: " << default_device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << "\n";
+	std::cout << "Clock freq: " << default_device.getInfo<CL_DEVICE_MAX_CLOCK_FREQUENCY>() << "\n";
+	std::cout << "Max mem alloc: " << default_device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>() << "\n";*/
 
-	// Create context
+	// Create context using default device
 	cl::Context context(default_device);
 
 	// Create kernel source code
@@ -92,39 +117,30 @@ int main()
 
 	// Declare variables
 	std::vector<std::vector<int>> _map = map.mMap;
-	int _width = map.getWidth();
-	int _height = map.getHeight();
-	std::vector<int> _1Dmap(_height * _width);
+	int _cols = map.getWidth();
+	int _rows = map.getHeight();
+	std::vector<int> _output(_cols);
 
 	// Convert 2D map into 1D map
-	for (int i = 0; i < _height; i++)
-	{
-		for (int j = 0; j < _width; j++)
-		{
-			_1Dmap[i * _width + j] = _map[i][j];
-		}
-	}
-
-	cl::vector<int> _output(_width);
-	std::cout << "map size: " << sizeof(_map) << "\n1d size: " << sizeof(_1Dmap) << " -- " << _1Dmap.size() << "\nint size: " << sizeof(int) << "\n";
+	std::vector<int> _1Dmap = to1D(_map);
 
 	// Buffers
 	cl::Buffer buffer_map(context,    CL_MEM_READ_ONLY , sizeof(int) * _1Dmap.size());
-	cl::Buffer buffer_width(context,  CL_MEM_READ_ONLY , sizeof(int));
-	cl::Buffer buffer_height(context, CL_MEM_READ_ONLY , sizeof(int));
+	cl::Buffer buffer_col(context,    CL_MEM_READ_ONLY , sizeof(int));
+	cl::Buffer buffer_row(context,    CL_MEM_READ_ONLY , sizeof(int));
 	cl::Buffer buffer_output(context, CL_MEM_WRITE_ONLY, sizeof(int) * _output.size());
 
 	// Write input buffers to device
 	cl::CommandQueue queue(context, default_device);
-	status = queue.enqueueWriteBuffer(buffer_map,    CL_TRUE, 0, sizeof(int) * _1Dmap.size(), _1Dmap.data()); // Input
-	status = queue.enqueueWriteBuffer(buffer_width,  CL_TRUE, 0, sizeof(int),                 &_width); // Width
-	status = queue.enqueueWriteBuffer(buffer_height, CL_TRUE, 0, sizeof(int),                 &_height); // Heigh
+	status = queue.enqueueWriteBuffer(buffer_map, CL_TRUE, 0, sizeof(int) * _1Dmap.size(), _1Dmap.data()); // Input
+	status = queue.enqueueWriteBuffer(buffer_col, CL_TRUE, 0, sizeof(int),                 &_cols); // Width
+	status = queue.enqueueWriteBuffer(buffer_row, CL_TRUE, 0, sizeof(int),                 &_rows); // Heigh
 
 	// Set arguments
 	cl::Kernel find_path(program, "find_path");
 	find_path.setArg(0, buffer_map);
-	find_path.setArg(1, buffer_width);
-	find_path.setArg(2, buffer_height);
+	find_path.setArg(1, buffer_col);
+	find_path.setArg(2, buffer_row);
 	find_path.setArg(3, buffer_output);
 
 	// Set work items and execute
@@ -133,10 +149,10 @@ int main()
 	std::cout << "Status finish: " << status << "\n";
 
 	// Read output buffer from device
-	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int) * _output.size(), _output.data(), NULL, NULL); // Output
+	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int) * _output.size(), _output.data()); // Output
 
 	std::cout << "Status read: " << status << "\n";
-	for (int i = 0; i < _height; i++)
+	for (int i = 0; i < _rows; i++)
 	{
 		std::cout << _output[i] << " ";
 	}
