@@ -1,8 +1,13 @@
-/*struct Node {
-	Node* mParent;
+typedef struct Node {
+	struct Node* parent;
 	int cost;
-	int2 position;
-} Node;*/
+	int position[2];
+} Node;
+
+//TODO: Skapa en vektor av noder som sedan används som en prioritetskö, dock genom att söka igenom hela listan varje gång istället.
+
+//TODO: Söka upp hur allokera minne för enskild WORK ITEM.
+//Alternativt lägga till parameter för maximal arraystorlek per WORK ITEM som de sedan har tillgång till i en gemensam array
 
 int heuristic(
 	int2 start, 
@@ -29,32 +34,47 @@ int heuristic(
 }
 
 void kernel find_path(
-	global int *_map, 
+	global int *map, 
 	global int *inCol, 
 	global int *inRow, 
-	global int *_output/*,
-	global int *agents*/)
+	global int *output,
+	global int *agents,
+	global Node *openList,
+	global Node *closedList,
+	global int *maxArraySize)
 {
 	int sum = 0;
 	int idx = get_global_id(0);
 	int col = (*inCol);
 	int row = (*inRow);
+	int listIdx = idx * (*maxArraySize); // TODO: Kontrollera index för gemensam array
 
+
+	/*
+	// Simple test
 	for (int i = 0; i < col; i++) 
 	{
-		if (idx == 0) 
-		{
-			printf("%i", _map[idx * row + i]);
-		}
-		sum += _map[idx * row + i];
+		sum += map[idx * row + i];
 	}
-	_output[idx] = sum;
+	output[idx] = sum;
+	*/
 
-	// Start and end positions
-	int2 start = { col / 2 + 1, 0 };
-	int2 target = { 0, 6 };
+	// Start and end positions retrieved from agent-vector
+	int2 start = { agents[idx * 2], agents[idx * 2 + 1]};
+	int2 target = { 14, 0 }; // Top right
 
-	int h = heuristic(start, target, col, _map);
-	printf("Heuristic: %i", h);
+	// Heuristic per agent
+	int h = heuristic(start, target, col, map);
+	//printf("Heuristic: %i", h);
+
+	openList[listIdx].parent = 5;
+	openList[listIdx].cost = idx;
+	openList[listIdx].position[0] = idx;
+	openList[listIdx].position[1] = idx + 1;
+
+	printf("Parent: %#010x", openList[listIdx].parent);
+	printf("Cost: %i", openList[listIdx].cost);
+	printf("Position: (%i, %i)", openList[listIdx].position[0], openList[listIdx].position[1]);
+
 
  };

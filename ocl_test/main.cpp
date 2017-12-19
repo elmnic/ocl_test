@@ -2,6 +2,16 @@
 #include <CL/cl2.hpp>
 #include <fstream>
 #include "Map.h"
+#include "Agents.h"
+
+
+typedef struct Node
+{
+	struct Node* mParent;
+	int cost;
+	int position[2];
+} Node;
+
 
 
 int convertToString(const char *filename, std::string& s)
@@ -55,6 +65,7 @@ std::vector<int> to1D(std::vector<std::vector<int>> vector)
 int main()
 {
 	Map map;
+	Agents agents;
 	cl_int status;
 
 	// Get platforms
@@ -86,12 +97,12 @@ int main()
 	// Use first device as default
 	cl::Device default_device = all_devices[0];
 	std::cout << "Using device: " << default_device.getInfo<CL_DEVICE_NAME>() << "\n";
-	/*std::cout << "Global mem: " << default_device.getInfo<CL_DEVICE_GLOBAL_MEM_CACHE_SIZE>() << "\n";
+	std::cout << "Global mem: " << default_device.getInfo<CL_DEVICE_GLOBAL_MEM_CACHE_SIZE>() << "\n";
 	std::cout << "Local mem: " << default_device.getInfo<CL_DEVICE_LOCAL_MEM_SIZE>() << "\n";
 	std::cout << "Max comp units: " << default_device.getInfo<CL_DEVICE_MAX_COMPUTE_UNITS>() << "\n";
 	std::cout << "Max work group: " << default_device.getInfo<CL_DEVICE_MAX_WORK_GROUP_SIZE>() << "\n";
 	std::cout << "Clock freq: " << default_device.getInfo<CL_DEVICE_MAX_CLOCK_FREQUENCY>() << "\n";
-	std::cout << "Max mem alloc: " << default_device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>() << "\n";*/
+	std::cout << "Max mem alloc: " << default_device.getInfo<CL_DEVICE_MAX_MEM_ALLOC_SIZE>() << "\n";
 
 	// Create context using default device
 	cl::Context context(default_device);
@@ -116,25 +127,38 @@ int main()
 	}
 
 	// Declare variables
-	std::vector<std::vector<int>> _map = map.mMap;
-	int _cols = map.getWidth();
-	int _rows = map.getHeight();
-	std::vector<int> _output(_cols);
+	int cols = map.getWidth();
+	int rows = map.getHeight();
+	std::vector<int> output(agents.nrOfAgents());
+	int maxArraySize = cols * rows;
 
 	// Convert 2D map into 1D map
-	std::vector<int> _1Dmap = to1D(_map);
+	std::vector<int> _1Dmap = to1D(map.mMap);
+	std::vector<int> _1Dagents = to1D(agents.agent_positions);
 
 	// Buffers
-	cl::Buffer buffer_map(context,    CL_MEM_READ_ONLY , sizeof(int) * _1Dmap.size());
-	cl::Buffer buffer_col(context,    CL_MEM_READ_ONLY , sizeof(int));
-	cl::Buffer buffer_row(context,    CL_MEM_READ_ONLY , sizeof(int));
-	cl::Buffer buffer_output(context, CL_MEM_WRITE_ONLY, sizeof(int) * _output.size());
+	cl::Buffer buffer_map(context,        CL_MEM_READ_ONLY , sizeof(int) * _1Dmap.size());
+	cl::Buffer buffer_col(context,        CL_MEM_READ_ONLY , sizeof(int));
+	cl::Buffer buffer_row(context,        CL_MEM_READ_ONLY , sizeof(int));
+	cl::Buffer buffer_output(context,     CL_MEM_WRITE_ONLY, sizeof(int) * output.size());
+	cl::Buffer buffer_agents(context,     CL_MEM_READ_ONLY,  sizeof(int) * _1Dagents.size());
+	cl::Buffer buffer_openList(context,   CL_MEM_READ_WRITE, sizeof(Node));
+	cl::Buffer buffer_closedList(context, CL_MEM_READ_WRITE, sizeof(Node));
+	cl::Buffer buffer_maxArrSize(context, CL_MEM_READ_ONLY, sizeof(int));
 
 	// Write input buffers to device
 	cl::CommandQueue queue(context, default_device);
-	status = queue.enqueueWriteBuffer(buffer_map, CL_TRUE, 0, sizeof(int) * _1Dmap.size(), _1Dmap.data()); // Input
-	status = queue.enqueueWriteBuffer(buffer_col, CL_TRUE, 0, sizeof(int),                 &_cols); // Width
-	status = queue.enqueueWriteBuffer(buffer_row, CL_TRUE, 0, sizeof(int),                 &_rows); // Heigh
+	status = queue.enqueueWriteBuffer(buffer_map,        CL_TRUE, 0, sizeof(int) * _1Dmap.size(), _1Dmap.data()); // Input
+	status = queue.enqueueWriteBuffer(buffer_col,        CL_TRUE, 0, sizeof(int),                        &cols); // Width
+	status = queue.enqueueWriteBuffer(buffer_row,        CL_TRUE, 0, sizeof(int),                        &rows); // Heigh
+	status = queue.enqueueWriteBuffer(buffer_agents,     CL_TRUE, 0, sizeof(int) * _1Dagents.size(), _1Dagents.data()); // Agent start positions
+	status = queue.enqueueWriteBuffer(buffer_openList,   CL_TRUE, 0, sizeof(Node) * maxArraySize * agents.nrOfAgents(), NULL); // Memory for openList
+	status = queue.enqueueWriteBuffer(buffer_closedList, CL_TRUE, 0, sizeof(Node) * maxArraySize * agents.nrOfAgents(), NULL); // Memory for closedList
+	status = queue.enqueueWriteBuffer(buffer_maxArrSize, CL_TRUE, 0, sizeof(int),                &maxArraySize); // Max space per WI in local array per WG
+
+
+	std::cout << "Status enq Node: " << status << "\n";
+	std::cout << "Size of Node * maxSize * WI: " << sizeof(Node) * maxArraySize * agents.nrOfAgents() << "\n";
 
 	// Set arguments
 	cl::Kernel find_path(program, "find_path");
@@ -142,20 +166,25 @@ int main()
 	find_path.setArg(1, buffer_col);
 	find_path.setArg(2, buffer_row);
 	find_path.setArg(3, buffer_output);
+	find_path.setArg(4, buffer_agents);
+	find_path.setArg(5, buffer_openList);
+	find_path.setArg(6, buffer_closedList);
+	find_path.setArg(7, buffer_maxArrSize);
 
 	// Set work items and execute
-	status = queue.enqueueNDRangeKernel(find_path, 0, cl::NDRange(_output.size()));
+	status = queue.enqueueNDRangeKernel(find_path, 0, cl::NDRange(agents.nrOfAgents()));
 	status = queue.finish();
 	std::cout << "Status finish: " << status << "\n";
 
 	// Read output buffer from device
-	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int) * _output.size(), _output.data()); // Output
+	status = queue.enqueueReadBuffer(buffer_output, CL_TRUE, 0, sizeof(int) * output.size(), output.data()); // Output
 
 	std::cout << "Status read: " << status << "\n";
-	for (int i = 0; i < _rows; i++)
+
+	/*for (int i = 0; i < rows; i++)
 	{
-		std::cout << _output[i] << " ";
-	}
+		std::cout << output[i] << " ";
+	}*/
 
 
 	system("pause");
