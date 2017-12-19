@@ -144,7 +144,7 @@ int main()
 	cl::Buffer buffer_agents(context,     CL_MEM_READ_ONLY,  sizeof(int) * _1Dagents.size());
 	cl::Buffer buffer_openList(context,   CL_MEM_READ_WRITE, sizeof(Node));
 	cl::Buffer buffer_closedList(context, CL_MEM_READ_WRITE, sizeof(Node));
-	cl::Buffer buffer_maxArrSize(context, CL_MEM_READ_ONLY, sizeof(int));
+	cl::Buffer buffer_maxArrSize(context, CL_MEM_READ_ONLY,  sizeof(int));
 
 	// Write input buffers to device
 	cl::CommandQueue queue(context, default_device);
